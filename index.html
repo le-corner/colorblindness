@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Colorblindness Simulator</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background: #f0f0f0;
+    padding: 20px;
+  }
+
+  h1 {
+    margin-bottom: 20px;
+  }
+
+  .tabs {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 15px;
+  }
+
+  .tab {
+    padding: 10px 20px;
+    margin: 0 5px;
+    background: #ddd;
+    border-radius: 5px 5px 0 0;
+    cursor: pointer;
+    font-weight: bold;
+  }
+
+  .tab.active {
+    background: #fff;
+    border-bottom: 2px solid #fff;
+  }
+
+  .tab-content {
+    display: none;
+  }
+
+  .tab-content.active {
+    display: block;
+  }
+
+  canvas, video {
+    max-width: 100%;
+    margin-top: 10px;
+    border: 2px solid #ccc;
+    border-radius: 8px;
+  }
+
+  select, input, button {
+    margin: 10px;
+    padding: 8px;
+    font-size: 16px;
+  }
+
+</style>
+</head>
+<body>
+
+<h1>Colorblindness Simulator</h1>
+
+<div class="tabs">
+  <div class="tab active" data-tab="camera-tab">Camera</div>
+  <div class="tab" data-tab="upload-tab">Upload</div>
+</div>
+
+<div id="controls">
+  <select id="color-type">
+    <option value="normal">Normal</option>
+    <option value="protanopia">Protanopia</option>
+    <option value="deuteranopia">Deuteranopia</option>
+    <option value="tritanopia">Tritanopia</option>
+    <option value="achromatopsia">Achromatopsia</option>
+  </select>
+</div>
+
+<div id="camera-tab" class="tab-content active">
+  <button id="start-camera">Open Camera</button><br>
+  <video id="video" autoplay playsinline style="display:none;"></video>
+  <canvas id="canvas-camera"></canvas>
+</div>
+
+<div id="upload-tab" class="tab-content">
+  <input type="file" id="upload-image" accept="image/*"><br>
+  <canvas id="canvas-upload"></canvas>
+</div>
+
+<script>
+  // Tabs functionality
+  const tabs = document.querySelectorAll(".tab");
+  const tabContents = document.querySelectorAll(".tab-content");
+
+  tabs.forEach(tab => {
+      tab.addEventListener("click", () => {
+          tabs.forEach(t => t.classList.remove("active"));
+          tab.classList.add("active");
+          tabContents.forEach(tc => tc.classList.remove("active"));
+          document.getElementById(tab.dataset.tab).classList.add("active");
+      });
+  });
+
+  // Elements
+  const video = document.getElementById("video");
+  const canvasCamera = document.getElementById("canvas-camera");
+  const ctxCamera = canvasCamera.getContext("2d");
+  const startCameraBtn = document.getElementById("start-camera");
+
+  const uploadInput = document.getElementById("upload-image");
+  const canvasUpload = document.getElementById("canvas-upload");
+  const ctxUpload = canvasUpload.getContext("2d");
+
+  const colorSelect = document.getElementById("color-type");
+
+  let uploadedImage = new Image();
+  let cameraActive = false;
+
+  // Colorblindness filters
+  function applyColorblindFilter(imageData, type) {
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i+1], b = data[i+2];
+          let newR = r, newG = g, newB = b;
+
+          switch(type) {
+              case "protanopia":
+                  newR = 0.567*r + 0.433*g;
+                  newG = 0.558*r + 0.442*g;
+                  newB = b;
+                  break;
+              case "deuteranopia":
+                  newR = 0.625*r + 0.375*g;
+                  newG = 0.7*r + 0.3*g;
+                  newB = b;
+                  break;
+              case "tritanopia":
+                  newR = r;
+                  newG = 0.95*g + 0.05*b;
+                  newB = 0.433*g + 0.567*b;
+                  break;
+              case "achromatopsia":
+                  const gray = 0.299*r + 0.587*g + 0.114*b;
+                  newR = newG = newB = gray;
+                  break;
+          }
+
+          data[i] = newR;
+          data[i+1] = newG;
+          data[i+2] = newB;
+      }
+      return imageData;
+  }
+
+  // Camera
+  async function startCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      video.style.display = "block";
+      cameraActive = true;
+      drawCamera();
+  }
+
+  function drawCamera() {
+      if (!cameraActive) return;
+      canvasCamera.width = video.videoWidth;
+      canvasCamera.height = video.videoHeight;
+      ctxCamera.drawImage(video, 0, 0);
+      let frame = ctxCamera.getImageData(0, 0, canvasCamera.width, canvasCamera.height);
+      frame = applyColorblindFilter(frame, colorSelect.value);
+      ctxCamera.putImageData(frame, 0, 0);
+      requestAnimationFrame(drawCamera);
+  }
+
+  // Upload
+  uploadInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+          uploadedImage.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+  });
+
+  uploadedImage.onload = function() {
+      drawUpload();
+  }
+
+  function drawUpload() {
+      canvasUpload.width = uploadedImage.width;
+      canvasUpload.height = uploadedImage.height;
+      ctxUpload.drawImage(uploadedImage, 0, 0);
+      let frame = ctxUpload.getImageData(0, 0, canvasUpload.width, canvasUpload.height);
+      frame = applyColorblindFilter(frame, colorSelect.value);
+      ctxUpload.putImageData(frame, 0, 0);
+  }
+
+  // Redraw on color change
+  colorSelect.addEventListener("change", () => {
+      if (cameraActive) drawCamera();
+      if (uploadedImage.src) drawUpload();
+  });
+
+  // Button
+  startCameraBtn.addEventListener("click", startCamera);
+</script>
+
+</body>
+</html>
